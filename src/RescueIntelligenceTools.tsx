@@ -9,7 +9,7 @@ type RescueDonation = {
   quantity: number
   unit: string
   serves: number
-  status: 'Available' | 'Reserved'
+  status: 'Available' | 'Reserved' | 'Delivered'
   location: string
 }
 

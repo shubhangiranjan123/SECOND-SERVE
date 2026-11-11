@@ -1,25 +1,32 @@
-
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import './App.css'
+import './NgoMatching.css'
 import RescueMap from './RescueMap'
-import RunnerDispatch from './RunnerDispatch'
+import RunnerDispatch, { type DeliveryCompletion } from './RunnerDispatch'
 import RescueIntelligenceTools from './RescueIntelligenceTools'
-type Donation = {
-  id: number
-  name: string
-  donor: string
-  category: string
-  quantity: number
-  unit: string
-  serves: number
-  distance: string
-  pickup: string
-  expires: string
-  status: 'Available' | 'Reserved'
-  emoji: string
-  color: string
-  location: string
-}
+import NgoMatchModal from './NgoMatchModal'
+import NgoNetwork from './NgoNetwork'
+import type {
+  Donation,
+  DonationStatus,
+  Ngo,
+  RescueRecord,
+  StorageType,
+} from './types'
+import {
+  AREAS,
+  createInitialDonations,
+  createInitialNgos,
+  defaultStorage,
+  findArea,
+} from './demoData'
+import {
+  evaluateNgo,
+  formatClock,
+  formatDuration,
+  isExpired,
+  minutesBetween,
+} from './rescueEngine'
 
 type DonationForm = {
   name: string
@@ -29,85 +36,38 @@ type DonationForm = {
   unit: string
   location: string
   pickup: string
+  storage: StorageType
+  readyInMinutes: string
+  safeUntil: string // value of a datetime-local input
 }
 
-const initialDonations: Donation[] = [
-  {
-    id: 1,
-    name: 'Freshly prepared rice bowls',
-    donor: 'The Green Kitchen',
-    category: 'Meals',
-    quantity: 24,
-    unit: 'meals',
-    serves: 24,
-    distance: '1.2 km',
-    pickup: 'Before 6:30 PM',
-    expires: 'Today',
-    status: 'Available',
-    emoji: '🍱',
-    color: 'peach',
-    location: 'Sector 35',
-  },
-  {
-    id: 2,
-    name: 'Fresh bakery assortment',
-    donor: 'Sunday Bakehouse',
-    category: 'Bakery',
-    quantity: 30,
-    unit: 'items',
-    serves: 15,
-    distance: '2.4 km',
-    pickup: 'Before 7:00 PM',
-    expires: 'Today',
-    status: 'Available',
-    emoji: '🥐',
-    color: 'yellow',
-    location: 'Sector 34',
-  },
-  {
-    id: 3,
-    name: 'Seasonal fresh produce',
-    donor: 'Harvest Market',
-    category: 'Produce',
-    quantity: 8,
-    unit: 'kg',
-    serves: 20,
-    distance: '3.1 km',
-    pickup: 'Before 5:45 PM',
-    expires: 'Today',
-    status: 'Reserved',
-    emoji: '🥬',
-    color: 'green',
-    location: 'Sector 22',
-  },
-  {
-    id: 4,
-    name: 'Fresh sandwich boxes',
-    donor: 'Daily Grind Cafe',
-    category: 'Meals',
-    quantity: 18,
-    unit: 'boxes',
-    serves: 18,
-    distance: '1.8 km',
-    pickup: 'Before 6:15 PM',
-    expires: 'Today',
-    status: 'Available',
-    emoji: '🥪',
-    color: 'lavender',
-    location: 'Sector 36',
-  },
-]
+const DONATIONS_KEY = 'second-serve-donations'
+const NGOS_KEY = 'second-serve-ngos-v1'
+const HISTORY_KEY = 'second-serve-rescue-history-v1'
+const MIN = 60_000
 
 const filters = ['All food', 'Meals', 'Bakery', 'Produce']
 
-const emptyForm: DonationForm = {
-  name: '',
-  donor: '',
-  category: 'Meals',
-  quantity: '10',
-  unit: 'meals',
-  location: '',
-  pickup: '',
+// datetime-local inputs use local time in the form "2026-11-11T18:30"
+function toLocalInput(ts: number) {
+  const d = new Date(ts)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function makeEmptyForm(now: number): DonationForm {
+  return {
+    name: '',
+    donor: '',
+    category: 'Meals',
+    quantity: '10',
+    unit: 'meals',
+    location: AREAS[2].name,
+    pickup: '',
+    storage: 'Chilled',
+    readyInMinutes: '0',
+    safeUntil: toLocalInput(now + 3 * 60 * MIN),
+  }
 }
 
 function getCategoryDetails(category: string) {
@@ -122,26 +82,145 @@ function getCategoryDetails(category: string) {
   return { color: 'peach', emoji: '🍲', unit: 'meals' }
 }
 
+// Older saved listings do not have the matching fields. Fill them in once
+// with safe defaults and flag the assumed deadline so it is never hidden.
+function normaliseDonation(raw: Partial<Donation>, now: number): Donation | null {
+  if (typeof raw.id !== 'number' || typeof raw.name !== 'string') return null
+
+  const location = raw.location ?? ''
+  const area = findArea(location)
+  const category = raw.category ?? 'Meals'
+  const status: DonationStatus =
+    raw.status === 'Reserved' || raw.status === 'Delivered' ? raw.status : 'Available'
+  const hasDeadline = typeof raw.safeUntil === 'number'
+
+  return {
+    id: raw.id,
+    name: raw.name,
+    donor: raw.donor ?? 'Unknown donor',
+    category,
+    quantity: raw.quantity ?? 1,
+    unit: raw.unit ?? 'items',
+    serves: raw.serves ?? raw.quantity ?? 1,
+    distance: raw.distance ?? '',
+    pickup: raw.pickup ?? '',
+    expires: raw.expires ?? 'Today',
+    status,
+    emoji: raw.emoji ?? getCategoryDetails(category).emoji,
+    color: raw.color ?? getCategoryDetails(category).color,
+    location,
+    storage: raw.storage ?? defaultStorage(category),
+    lat: raw.lat ?? area.lat,
+    lng: raw.lng ?? area.lng,
+    readyAt: raw.readyAt ?? now,
+    safeUntil: hasDeadline ? (raw.safeUntil as number) : now + 6 * 60 * MIN,
+    deadlineAssumed: hasDeadline ? raw.deadlineAssumed : true,
+    ngoId: typeof raw.ngoId === 'number' ? raw.ngoId : null,
+  }
+}
+
 function loadDonations(): Donation[] {
+  const now = Date.now()
+
   try {
-    const saved = localStorage.getItem('second-serve-donations')
+    const saved = localStorage.getItem(DONATIONS_KEY)
 
     if (saved) {
       const parsed: unknown = JSON.parse(saved)
 
       if (Array.isArray(parsed)) {
-        return parsed as Donation[]
+        return parsed
+          .map((item) => normaliseDonation(item as Partial<Donation>, now))
+          .filter((item): item is Donation => item !== null)
       }
     }
   } catch {
     console.warn('Could not load saved donations.')
   }
 
-  return initialDonations
+  return createInitialDonations(now)
+}
+
+function loadNgos(): Ngo[] {
+  try {
+    const saved = localStorage.getItem(NGOS_KEY)
+    if (saved) {
+      const parsed: unknown = JSON.parse(saved)
+      if (Array.isArray(parsed)) {
+        return parsed.filter(
+          (n): n is Ngo =>
+            !!n &&
+            typeof n === 'object' &&
+            typeof (n as Ngo).id === 'number' &&
+            typeof (n as Ngo).name === 'string' &&
+            typeof (n as Ngo).dailyCapacity === 'number',
+        )
+      }
+    }
+  } catch {
+    console.warn('Could not load saved organisations.')
+  }
+  return createInitialNgos()
+}
+
+function loadHistory(): RescueRecord[] {
+  try {
+    const saved = localStorage.getItem(HISTORY_KEY)
+    if (saved) {
+      const parsed: unknown = JSON.parse(saved)
+      if (Array.isArray(parsed)) {
+        // Keep only well-formed records, and only one per donation.
+        const seen = new Set<number>()
+        return parsed.filter((r): r is RescueRecord => {
+          const ok =
+            !!r &&
+            typeof r === 'object' &&
+            typeof (r as RescueRecord).donationId === 'number' &&
+            typeof (r as RescueRecord).deliveredAt === 'number' &&
+            !seen.has((r as RescueRecord).donationId)
+          if (ok) seen.add((r as RescueRecord).donationId)
+          return ok
+        })
+      }
+    }
+  } catch {
+    console.warn('Could not load rescue history.')
+  }
+  return []
+}
+
+function saveToStorage(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    console.warn(`Could not save ${key}.`)
+  }
+}
+
+// Re-renders every 30 seconds so countdowns and deadline checks stay current.
+function useNow(intervalMs = 30_000) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), intervalMs)
+    return () => window.clearInterval(timer)
+  }, [intervalMs])
+  return now
+}
+
+function urgencyOf(donation: Donation, now: number) {
+  const left = minutesBetween(now, donation.safeUntil)
+  if (left <= 0) return 'expired'
+  if (left <= 60) return 'critical'
+  if (left <= 180) return 'high'
+  return 'normal'
 }
 
 function App() {
   const [donations, setDonations] = useState<Donation[]>(loadDonations)
+  const [ngos, setNgos] = useState<Ngo[]>(loadNgos)
+  const [rescueHistory, setRescueHistory] = useState<RescueRecord[]>(loadHistory)
+  const [matchingDonationId, setMatchingDonationId] = useState<number | null>(null)
+  const now = useNow()
   const [activeFilter, setActiveFilter] = useState('All food')
   const [search, setSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
@@ -162,27 +241,41 @@ const isRescueFeasible = rescueBufferMinutes >= 0
   const [donationToRemove, setDonationToRemove] =
     useState<Donation | null>(null)
   const [notice, setNotice] = useState('')
-  const [form, setForm] = useState<DonationForm>({ ...emptyForm })
+  const [form, setForm] = useState<DonationForm>(() => makeEmptyForm(Date.now()))
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        'second-serve-donations',
-        JSON.stringify(donations),
-      )
-    } catch {
-      console.warn('Could not save donations.')
-    }
-  }, [donations])
+  useEffect(() => saveToStorage(DONATIONS_KEY, donations), [donations])
+  useEffect(() => saveToStorage(NGOS_KEY, ngos), [ngos])
+  useEffect(() => saveToStorage(HISTORY_KEY, rescueHistory), [rescueHistory])
 
   const availableCount = donations.filter(
-    (item) => item.status === 'Available',
+    (item) => item.status === 'Available' && !isExpired(item, now),
   ).length
 
-  const totalServings = donations.reduce(
-    (total, item) => total + item.serves,
-    0,
-  )
+  // Potential impact: listed or reserved, not yet delivered, not expired.
+  const totalServings = donations
+    .filter(
+      (item) =>
+        item.status === 'Reserved' ||
+        (item.status === 'Available' && !isExpired(item, now)),
+    )
+    .reduce((total, item) => total + item.serves, 0)
+
+  // Actual impact: comes ONLY from the permanent rescue history.
+  const lifetimeRescues = rescueHistory.length
+  const lifetimeServings = rescueHistory.reduce((sum, r) => sum + r.servings, 0)
+  const verifiedPartners = ngos.filter((n) => n.verification === 'Verified').length
+
+  const matchingDonation =
+    donations.find((item) => item.id === matchingDonationId) ?? null
+
+  // Donations handed to Runner Dispatch carry the destination organisation.
+  const dispatchDonations = useMemo(() => {
+    const ngoNames = new Map(ngos.map((n) => [n.id, n.name]))
+    return donations.map((d) => ({
+      ...d,
+      destination: d.ngoId !== null ? ngoNames.get(d.ngoId) ?? null : null,
+    }))
+  }, [donations, ngos])
 
   const filteredDonations = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -202,7 +295,7 @@ const isRescueFeasible = rescueBufferMinutes >= 0
 
   function openNewDonationForm() {
     setEditingDonation(null)
-    setForm({ ...emptyForm })
+    setForm(makeEmptyForm(Date.now()))
     setNotice('')
     setShowForm(true)
   }
@@ -215,8 +308,13 @@ const isRescueFeasible = rescueBufferMinutes >= 0
       category: donation.category,
       quantity: String(donation.quantity),
       unit: donation.unit,
-      location: donation.location,
+      location: findArea(donation.location).name,
       pickup: donation.pickup,
+      storage: donation.storage,
+      readyInMinutes: String(
+        Math.max(0, minutesBetween(now, donation.readyAt)),
+      ),
+      safeUntil: toLocalInput(donation.safeUntil),
     })
     setNotice('')
     setShowForm(true)
@@ -225,7 +323,7 @@ const isRescueFeasible = rescueBufferMinutes >= 0
   function closeDonationForm() {
     setShowForm(false)
     setEditingDonation(null)
-    setForm({ ...emptyForm })
+    setForm(makeEmptyForm(Date.now()))
   }
 
   function handleCategoryChange(category: string) {
@@ -235,6 +333,7 @@ const isRescueFeasible = rescueBufferMinutes >= 0
       ...current,
       category,
       unit: details.unit,
+      storage: defaultStorage(category),
     }))
   }
 
@@ -254,6 +353,31 @@ const isRescueFeasible = rescueBufferMinutes >= 0
       return
     }
 
+    const submittedAt = Date.now()
+    const area = findArea(location)
+    const safeUntil = new Date(form.safeUntil).getTime()
+    const readyAt =
+      submittedAt + Math.max(0, Number(form.readyInMinutes) || 0) * MIN
+
+    if (!Number.isFinite(safeUntil) || safeUntil <= submittedAt) {
+      setNotice('The safe-use deadline must be in the future.')
+      return
+    }
+
+    if (readyAt >= safeUntil) {
+      setNotice('Food must be ready for pickup before its safe-use deadline.')
+      return
+    }
+
+    const matchingFields = {
+      storage: form.storage,
+      lat: area.lat,
+      lng: area.lng,
+      readyAt,
+      safeUntil,
+      deadlineAssumed: false,
+    }
+
     if (editingDonation) {
       setDonations((current) =>
         current.map((donation) =>
@@ -271,6 +395,7 @@ const isRescueFeasible = rescueBufferMinutes >= 0
                 location,
                 color: categoryDetails.color,
                 emoji: categoryDetails.emoji,
+                ...matchingFields,
               }
             : donation,
         ),
@@ -293,6 +418,8 @@ const isRescueFeasible = rescueBufferMinutes >= 0
         emoji: categoryDetails.emoji,
         color: categoryDetails.color,
         location,
+        ...matchingFields,
+        ngoId: null,
       }
 
       setDonations((current) => [newDonation, ...current])
@@ -306,6 +433,15 @@ const isRescueFeasible = rescueBufferMinutes >= 0
 
   function removeDonation(id: number) {
     const donation = donations.find((item) => item.id === id)
+
+    if (donation?.status === 'Reserved') {
+      // A reserved donation has a rescue job (and maybe a busy runner).
+      // Removing it would leave the dispatch side inconsistent.
+      setNotice(
+        `"${donation.name}" is reserved for a rescue and cannot be removed until it is delivered.`,
+      )
+      return
+    }
 
     if (donation) {
       setDonationToRemove(donation)
@@ -323,20 +459,92 @@ const isRescueFeasible = rescueBufferMinutes >= 0
     setDonationToRemove(null)
   }
 
+  // "Reserve donation" now opens Smart NGO Matching first.
   function reserveDonation(id: number) {
     const item = donations.find((donation) => donation.id === id)
 
     if (!item || item.status !== 'Available') return
 
+    setMatchingDonationId(id)
+  }
+
+  function confirmReservation(donationId: number, ngoId: number) {
+    const item = donations.find((d) => d.id === donationId)
+    const ngo = ngos.find((n) => n.id === ngoId)
+
+    if (!item || !ngo || item.status !== 'Available') return
+
+    // Re-check eligibility at the moment of confirming, in case time has
+    // passed or capacity changed while the modal was open.
+    const check = evaluateNgo(item, ngo, donations, rescueHistory, Date.now())
+
+    if (!check.eligible) {
+      setNotice(`${ngo.name} is no longer eligible: ${check.failures[0]}`)
+      return
+    }
+
     setDonations((current) =>
       current.map((donation) =>
-        donation.id === id
-          ? { ...donation, status: 'Reserved' }
+        donation.id === donationId && donation.status === 'Available'
+          ? { ...donation, status: 'Reserved', ngoId }
           : donation,
       ),
     )
 
-    setNotice(`"${item.name}" has been marked as reserved.`)
+    setMatchingDonationId(null)
+    setNotice(`"${item.name}" reserved for ${ngo.name} (match score ${check.score}/100).`)
+  }
+
+  // Called by Runner Dispatch when a job reaches "Delivered".
+  // This is the ONLY place a rescue record is created, and it is keyed by
+  // donation id, so the same rescue can never be counted twice.
+  function recordDelivery(completion: DeliveryCompletion) {
+    const donation = donations.find((d) => d.id === completion.donationId)
+
+    if (!donation) return
+
+    const ngo = ngos.find((n) => n.id === donation.ngoId)
+    const deliveredAt = Date.now()
+
+    setRescueHistory((current) => {
+      if (current.some((r) => r.donationId === completion.donationId)) {
+        return current
+      }
+
+      const record: RescueRecord = {
+        rescueId: `R-${completion.donationId}`,
+        donationId: completion.donationId,
+        food: donation.name,
+        donor: donation.donor,
+        pickupArea: donation.location,
+        ngoId: donation.ngoId,
+        ngoName: ngo?.name ?? completion.destination,
+        runnerName: completion.runnerName,
+        quantity: donation.quantity,
+        unit: donation.unit,
+        servings: donation.serves,
+        deliveredAt,
+      }
+
+      return [record, ...current]
+    })
+
+    setDonations((current) =>
+      current.map((d) =>
+        d.id === completion.donationId && d.status === 'Reserved'
+          ? { ...d, status: 'Delivered' }
+          : d,
+      ),
+    )
+  }
+
+  function updateNgo(updated: Ngo) {
+    setNgos((current) => current.map((n) => (n.id === updated.id ? updated : n)))
+  }
+
+  function addNgo(ngo: Ngo) {
+    setNgos((current) => [...current, ngo])
+    setNotice(`${ngo.name} registered. Verify it before it can receive food.`)
   }
 
   return (
@@ -360,6 +568,9 @@ const isRescueFeasible = rescueBufferMinutes >= 0
           <a className="nav-link" href="#donations">
             <span className="nav-icon">♧</span> Food donations
             <span className="nav-count">{availableCount}</span>
+          </a>
+          <a className="nav-link" href="#ngo-network">
+            <span className="nav-icon">⌂</span> NGO network
           </a>
           <a className="nav-link" href="#intelligence">
             <span className="nav-icon">✳</span> Rescue intelligence
@@ -510,29 +721,36 @@ const isRescueFeasible = rescueBufferMinutes >= 0
                 {totalServings.toLocaleString()}
                 <span className="stat-unit"> servings</span>
               </div>
-              <div className="stat-foot">Across current listings</div>
+              <div className="stat-foot">Listed or reserved · not yet delivered</div>
             </article>
 
             <article className="stat-card">
               <div className="stat-top">
-                <span>Community partners</span>
+                <span>Verified partners</span>
                 <span className="stat-icon lilac-bg">♧</span>
               </div>
               <div className="stat-value">
-                12<span className="stat-unit"> partners</span>
+                {verifiedPartners}
+                <span className="stat-unit"> of {ngos.length} organisations</span>
               </div>
-              <div className="stat-foot">Local rescue network</div>
+              <div className="stat-foot">Eligible to receive food</div>
             </article>
 
             <article className="stat-card stat-highlight">
               <div className="stat-top">
-                <span>Our shared mission</span>
+                <span>Lifetime rescues</span>
                 <span className="stat-icon cream-bg">✳</span>
               </div>
               <div className="stat-value">
-                Zero<span className="stat-unit"> good food wasted</span>
+                {lifetimeRescues}
+                <span className="stat-unit">
+                  {' '}
+                  {lifetimeRescues === 1 ? 'rescue' : 'rescues'} completed
+                </span>
               </div>
-              <div className="stat-foot">Small actions, real impact.</div>
+              <div className="stat-foot">
+                {lifetimeServings.toLocaleString()} servings delivered · actual impact
+              </div>
             </article>
           </section>
 
@@ -590,7 +808,16 @@ const isRescueFeasible = rescueBufferMinutes >= 0
             </div>
 
             <div className="donation-grid">
-              {filteredDonations.map((donation) => (
+              {filteredDonations.map((donation) => {
+                const expired =
+                  donation.status === 'Available' && isExpired(donation, now)
+                const shownStatus = expired ? 'Expired' : donation.status
+                const urgency = urgencyOf(donation, now)
+                const safeLeft = minutesBetween(now, donation.safeUntil)
+                const destination =
+                  ngos.find((n) => n.id === donation.ngoId)?.name ?? null
+
+                return (
                 <article className="donation-card" key={donation.id}>
                   <div className="donation-card-actions">
                     <button
@@ -615,13 +842,9 @@ const isRescueFeasible = rescueBufferMinutes >= 0
                   <div className={`food-visual ${donation.color}`}>
                     <span className="food-emoji">{donation.emoji}</span>
                     <span
-                      className={`status-pill ${
-                        donation.status === 'Available'
-                          ? 'status-available'
-                          : 'status-reserved'
-                      }`}
+                      className={`status-pill status-${shownStatus.toLowerCase()}`}
                     >
-                      <span /> {donation.status}
+                      <span /> {shownStatus}
                     </span>
                     <span className="food-category">
                       {donation.category}
@@ -646,24 +869,40 @@ const isRescueFeasible = rescueBufferMinutes >= 0
                     <div className="donation-meta">
                       <span>⌖ {donation.location}</span>
                       <span>◷ {donation.pickup}</span>
+                      <span>❄ {donation.storage}</span>
+                      {donation.status !== 'Delivered' && (
+                        <span className={`safe-time urgency-${urgency}`}>
+                          ⏱{' '}
+                          {safeLeft > 0
+                            ? `Safe for ${formatDuration(safeLeft)} · until ${formatClock(donation.safeUntil)}`
+                            : 'Safe-use window passed'}
+                          {donation.deadlineAssumed ? ' (assumed)' : ''}
+                        </span>
+                      )}
+                      {destination && <span>→ {destination}</span>}
                     </div>
 
                     <button
                       className={`donation-action ${
-                        donation.status === 'Reserved'
+                        donation.status !== 'Available' || expired
                           ? 'action-reserved'
                           : ''
                       }`}
                       onClick={() => reserveDonation(donation.id)}
-                      disabled={donation.status === 'Reserved'}
+                      disabled={donation.status !== 'Available' || expired}
                     >
-                      {donation.status === 'Available'
-                        ? 'Reserve donation ↗'
-                        : 'Reserved ✓'}
+                      {expired
+                        ? 'Not safe to rescue'
+                        : donation.status === 'Available'
+                          ? 'Reserve donation ↗'
+                          : donation.status === 'Delivered'
+                            ? 'Delivered ✓'
+                            : 'Reserved ✓'}
                     </button>
                   </div>
                 </article>
-              ))}
+                )
+              })}
             </div>
 
             {filteredDonations.length === 0 && (
@@ -698,7 +937,19 @@ const isRescueFeasible = rescueBufferMinutes >= 0
             </div>
           </section>
           <RescueMap />
-          <RunnerDispatch donations={donations} />
+          <NgoNetwork
+            ngos={ngos}
+            donations={donations}
+            history={rescueHistory}
+            now={now}
+            onUpdate={updateNgo}
+            onAdd={addNgo}
+          />
+          <RunnerDispatch
+            donations={dispatchDonations}
+            lifetimeRescues={lifetimeRescues}
+            onDeliveryComplete={recordDelivery}
+          />
 
 
           <section className="intelligence-section" id="intelligence">
@@ -905,21 +1156,68 @@ const isRescueFeasible = rescueBufferMinutes >= 0
                 </label>
               </div>
 
-              <label>
-                Pickup location
-                <input
-                  required
-                  maxLength={100}
-                  placeholder="e.g. Sector 35, Chandigarh"
-                  value={form.location}
-                  onChange={(event) =>
-                    setForm({ ...form, location: event.target.value })
-                  }
-                />
-              </label>
+              <div className="form-row">
+                <label>
+                  Pickup area
+                  <select
+                    value={form.location}
+                    onChange={(event) =>
+                      setForm({ ...form, location: event.target.value })
+                    }
+                  >
+                    {AREAS.map((area) => (
+                      <option key={area.name}>{area.name}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  Storage needed
+                  <select
+                    value={form.storage}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        storage: event.target.value as StorageType,
+                      })
+                    }
+                  >
+                    <option value="Ambient">Room temperature</option>
+                    <option value="Chilled">Chilled</option>
+                    <option value="Frozen">Frozen</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="form-row">
+                <label>
+                  Ready for pickup in (minutes)
+                  <input
+                    type="number"
+                    min="0"
+                    max="1440"
+                    value={form.readyInMinutes}
+                    onChange={(event) =>
+                      setForm({ ...form, readyInMinutes: event.target.value })
+                    }
+                  />
+                </label>
+
+                <label>
+                  Safe to eat until
+                  <input
+                    required
+                    type="datetime-local"
+                    value={form.safeUntil}
+                    onChange={(event) =>
+                      setForm({ ...form, safeUntil: event.target.value })
+                    }
+                  />
+                </label>
+              </div>
 
               <label>
-                Pickup deadline
+                Pickup note
                 <input
                   maxLength={100}
                   placeholder="e.g. Today before 7 PM"
@@ -932,7 +1230,9 @@ const isRescueFeasible = rescueBufferMinutes >= 0
 
               <div className="form-note">
                 <span>✳</span> Only list food that has been safely stored
-                and is suitable for donation.
+                and is suitable for donation. The safe-use time is the donor's
+                own judgement; SECOND-SERVE uses it for planning and does not
+                certify food safety.
               </div>
 
               <div className="modal-actions">
@@ -952,6 +1252,18 @@ const isRescueFeasible = rescueBufferMinutes >= 0
             </form>
           </section>
         </div>
+      )}
+
+      {matchingDonation && (
+        <NgoMatchModal
+          donation={matchingDonation}
+          donations={donations}
+          ngos={ngos}
+          history={rescueHistory}
+          now={now}
+          onReserve={confirmReservation}
+          onClose={() => setMatchingDonationId(null)}
+        />
       )}
 
       {donationToRemove && (

@@ -1,0 +1,581 @@
+/* ------------------------------------------------------------------
+   SECOND-SERVE · Smart NGO Matching + Partner Network
+   Uses the same palette as RunnerDispatch.css and App.css.
+------------------------------------------------------------------- */
+
+/* ---------- Board additions ---------- */
+.status-pill.status-delivered {
+  background: #e7efdf;
+  color: #4d6a42;
+}
+
+.status-pill.status-expired {
+  background: #f3e9e6;
+  color: #9a5a48;
+}
+
+.safe-time {
+  font-weight: 600;
+}
+
+.safe-time.urgency-critical {
+  color: #b5533e;
+}
+
+.safe-time.urgency-high {
+  color: #a5772a;
+}
+
+.safe-time.urgency-normal {
+  color: #5f7a52;
+}
+
+.safe-time.urgency-expired {
+  color: #9a8f86;
+}
+
+/* ---------- Match modal ---------- */
+.match-modal {
+  max-width: 720px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+}
+
+.match-verdict {
+  display: grid;
+  gap: 4px;
+  margin: 4px 0 18px;
+  padding: 14px 16px;
+  border: 1px solid #dce8dc;
+  border-radius: 14px;
+  background: #f4f8f1;
+  color: #3f5635;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.match-verdict strong {
+  font-size: 15px;
+  color: #284e37;
+}
+
+.match-verdict.verdict-not-feasible,
+.match-verdict.verdict-expired {
+  border-color: #f0d6cd;
+  background: #fbf1ed;
+  color: #8a4d3d;
+}
+
+.match-verdict.verdict-not-feasible strong,
+.match-verdict.verdict-expired strong {
+  color: #8a3f2c;
+}
+
+.match-list {
+  display: grid;
+  gap: 12px;
+}
+
+.match-card {
+  position: relative;
+  display: grid;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid #e3e8dd;
+  border-radius: 16px;
+  background: #fffefa;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.match-card:hover {
+  box-shadow: 0 12px 30px rgba(54, 66, 45, 0.08);
+}
+
+.match-card.is-selected {
+  border-color: #9ab58a;
+  box-shadow: 0 0 0 3px #e7efdf;
+}
+
+.match-card input[type='radio'] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.match-card:has(input:focus-visible) {
+  outline: 2px solid #9ab58a;
+  outline-offset: 2px;
+}
+
+.match-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.match-card h3 {
+  margin: 4px 0 2px;
+  color: #293b2d;
+  font-size: 16px;
+}
+
+.match-best {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #f8e8ec;
+  color: #a2566b;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+}
+
+.match-sub {
+  color: #74786b;
+  font-size: 12px;
+}
+
+.match-score {
+  display: flex;
+  flex-shrink: 0;
+  align-items: baseline;
+  gap: 3px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: #eef3e8;
+  color: #3f5635;
+}
+
+.match-score strong {
+  font-size: 22px;
+  letter-spacing: -0.5px;
+}
+
+.match-score span {
+  font-size: 11px;
+  color: #74786b;
+}
+
+.match-factors {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.match-factor span {
+  display: block;
+  margin-bottom: 5px;
+  color: #74786b;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.match-bar,
+.ngo-capacity-bar {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #eef0e9;
+}
+
+.match-bar i,
+.ngo-capacity-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #9ab58a;
+}
+
+.match-reasons {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: #526747;
+  font-size: 12.5px;
+}
+
+.match-reasons .match-warning {
+  color: #a5772a;
+}
+
+.match-excluded {
+  margin-top: 16px;
+  padding: 12px 16px;
+  border: 1px dashed #e3d9cf;
+  border-radius: 14px;
+  background: #fffcf7;
+  font-size: 13px;
+}
+
+.match-excluded summary {
+  color: #74786b;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.match-excluded-row {
+  margin-top: 12px;
+}
+
+.match-excluded-row strong {
+  color: #293b2d;
+}
+
+.match-excluded-row ul {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  color: #9a5a48;
+  font-size: 12.5px;
+}
+
+.match-note {
+  margin: 16px 0 0;
+  color: #8a8d80;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+/* ---------- Partner network section ---------- */
+.ngo-network {
+  margin: 32px 0;
+  padding: 30px;
+  border: 1px solid #e3e8dd;
+  border-radius: 22px;
+  background: #fffefa;
+  color: #303b2d;
+}
+
+.ngo-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 26px;
+}
+
+.ngo-eyebrow {
+  color: #78876b;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.6px;
+}
+
+.ngo-heading h2 {
+  margin: 10px 0;
+  font-size: clamp(24px, 3vw, 34px);
+  letter-spacing: -0.8px;
+}
+
+.ngo-heading p {
+  max-width: 560px;
+  margin: 0;
+  color: #73796d;
+  line-height: 1.6;
+}
+
+.ngo-heading .button-outline {
+  flex-shrink: 0;
+}
+
+.ngo-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.ngo-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  border-radius: 16px;
+  background: #f6f8f1;
+}
+
+.ngo-stat span {
+  color: #78876b;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.ngo-stat strong {
+  font-size: 28px;
+  letter-spacing: -0.8px;
+}
+
+.ngo-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 24px;
+  padding: 20px;
+  border: 1px solid #e8e2d8;
+  border-radius: 16px;
+  background: #fbf7f1;
+}
+
+.ngo-form label,
+.ngo-controls label {
+  display: grid;
+  gap: 6px;
+  color: #687260;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ngo-form input,
+.ngo-form select,
+.ngo-controls input[type='number'] {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid #e0e4d9;
+  border-radius: 8px;
+  background: #fffdf8;
+  color: #353d30;
+  font: inherit;
+  font-size: 13px;
+}
+
+.ngo-form input:focus,
+.ngo-form select:focus,
+.ngo-controls input:focus {
+  outline: 2px solid #c8d7ba;
+  border-color: #9eaf8e;
+}
+
+.ngo-check {
+  display: flex !important;
+  align-items: center;
+  gap: 8px !important;
+}
+
+.ngo-check input {
+  width: auto;
+  accent-color: #718b60;
+}
+
+.ngo-form-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #b5533e;
+  font-size: 13px;
+}
+
+.ngo-form-actions {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  color: #74786b;
+  font-size: 12px;
+}
+
+.ngo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.ngo-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid #e3e8dd;
+  border-radius: 18px;
+  background: #fff;
+}
+
+.ngo-card.ngo-unverified {
+  border-style: dashed;
+  background: #fffcf7;
+}
+
+.ngo-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ngo-card h3 {
+  margin: 0 0 4px;
+  color: #293b2d;
+  font-size: 15px;
+}
+
+.ngo-sub,
+.ngo-capacity-detail {
+  color: #74786b;
+  font-size: 12px;
+}
+
+.ngo-badge {
+  flex-shrink: 0;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
+.badge-verified {
+  background: #e7efdf;
+  color: #4d6a42;
+}
+
+.badge-pending {
+  background: #faf0d2;
+  color: #8a6a1f;
+}
+
+.badge-rejected {
+  background: #f8e1dc;
+  color: #9a4a38;
+}
+
+.ngo-note {
+  margin: 0;
+  color: #8a8d80;
+  font-size: 12px;
+  font-style: italic;
+}
+
+.ngo-facilities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ngo-facilities span {
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.ngo-facilities .has {
+  background: #eef3e8;
+  color: #4d6a42;
+}
+
+.ngo-facilities .lacks {
+  background: #f4f1ec;
+  color: #9a8f86;
+}
+
+.ngo-capacity {
+  display: grid;
+  gap: 6px;
+}
+
+.ngo-capacity-label {
+  display: flex;
+  justify-content: space-between;
+  color: #687260;
+  font-size: 12px;
+}
+
+.ngo-capacity-label strong {
+  color: #293b2d;
+}
+
+.ngo-controls {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.ngo-warning {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #fbf1ed;
+  color: #8a4d3d;
+  font-size: 12px;
+}
+
+.ngo-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: auto;
+}
+
+.ngo-verify {
+  padding: 8px 14px;
+  border: none;
+  border-radius: 999px;
+  background: #293b2d;
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ngo-verify:hover {
+  background: #3f5635;
+}
+
+.ngo-link {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #718267;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ngo-link:hover {
+  color: #3f5635;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.ngo-disclaimer {
+  margin: 20px 0 0;
+  color: #8a8d80;
+  font-size: 12px;
+}
+
+@media (max-width: 760px) {
+  .ngo-network {
+    padding: 20px;
+  }
+
+  .ngo-heading,
+  .ngo-form-actions {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .ngo-stats,
+  .ngo-form {
+    grid-template-columns: 1fr;
+  }
+
+  .match-factors {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .match-card {
+    transition: none;
+  }
+}

@@ -11,7 +11,16 @@ type DonationForDispatch = {
   unit: string
   location: string
   pickup: string
-  status: 'Available' | 'Reserved'
+  status: 'Available' | 'Reserved' | 'Delivered'
+  destination: string | null // name of the matched organisation
+}
+
+// Sent to App when a job reaches Delivered. App owns the permanent
+// rescue history and ignores a second completion for the same donation.
+export type DeliveryCompletion = {
+  donationId: number
+  runnerName: string
+  destination: string
 }
 
 type Runner = {
@@ -44,7 +53,11 @@ type SavedDispatch = {
 
 type RunnerDispatchProps = {
   donations: DonationForDispatch[]
+  lifetimeRescues: number
+  onDeliveryComplete: (completion: DeliveryCompletion) => void
 }
+
+const FALLBACK_DESTINATION = 'Community Food Centre'
 
 const DISPATCH_STORAGE_KEY = 'second-serve-dispatch-v1'
 
@@ -192,6 +205,8 @@ function loadDispatch(): SavedDispatch {
 
 export default function RunnerDispatch({
   donations,
+  lifetimeRescues,
+  onDeliveryComplete,
 }: RunnerDispatchProps) {
   const [savedDispatch] = useState<SavedDispatch>(loadDispatch)
 
@@ -225,6 +240,7 @@ export default function RunnerDispatch({
               ...existing,
               food: donation.name,
               pickup: `${donation.donor} · ${donation.location}`,
+              destination: donation.destination ?? existing.destination,
             }
           }
 
@@ -232,7 +248,7 @@ export default function RunnerDispatch({
             id: donation.id,
             food: donation.name,
             pickup: `${donation.donor} · ${donation.location}`,
-            destination: 'Community Food Centre',
+            destination: donation.destination ?? FALLBACK_DESTINATION,
             urgency: 'Normal',
             runnerId: null,
             status: 'Awaiting assignment',
@@ -326,8 +342,17 @@ export default function RunnerDispatch({
     )
 
     // This only runs on the transition to Delivered.
-    // Delivered jobs cannot advance again, preventing duplicate counts.
+    // Delivered jobs cannot advance again, and App also refuses a second
+    // record for the same donation, so a rescue is counted exactly once.
     if (nextStatus === 'Delivered' && job.runnerId !== null) {
+      const runner = runners.find((item) => item.id === job.runnerId)
+
+      onDeliveryComplete({
+        donationId: job.id,
+        runnerName: runner?.name ?? 'Unknown runner',
+        destination: job.destination,
+      })
+
       setRunners((current) =>
         current.map((runner) =>
           runner.id === job.runnerId
@@ -381,10 +406,8 @@ export default function RunnerDispatch({
         </div>
 
         <div className="runner-stat">
-          <span>COMPLETED RESCUES</span>
-          <strong>
-            {jobs.filter((job) => job.status === 'Delivered').length}
-          </strong>
+          <span>LIFETIME RESCUES</span>
+          <strong>{lifetimeRescues}</strong>
         </div>
       </div>
 
@@ -414,7 +437,7 @@ export default function RunnerDispatch({
             </span>
 
             <div className="runner-completed">
-              <span>Rescues completed</span>
+              <span>Rescues completed (incl. sample)</span>
               <strong>{runner.completed}</strong>
             </div>
           </article>
