@@ -58,19 +58,16 @@ export default function NgoMatchModal({
       >
         <div className="modal-header">
           <div>
-            <div className="eyebrow">SMART NGO MATCHING</div>
-            <h2 id="match-title">
-              Find the right home<span className="heading-period">.</span>
-            </h2>
+            <h2 id="match-title">Find the right home</h2>
             <p>
-              {donation.name} · {donation.serves} servings · {donation.storage} ·{' '}
+              <strong>{donation.name}</strong>, {donation.serves} servings, {donation.storage.toLowerCase()}.{' '}
               {safeLeft > 0
-                ? `safe for ${formatDuration(safeLeft)} (until ${formatClock(donation.safeUntil)})`
-                : 'safe-use window has passed'}
+                ? `Safe for ${formatDuration(safeLeft)} (until ${formatClock(donation.safeUntil)}).`
+                : 'The safe-use window has passed.'}
             </p>
           </div>
           <button className="modal-close" onClick={onClose} aria-label="Close" type="button">
-            ×
+            <span aria-hidden="true">×</span>
           </button>
         </div>
 
@@ -104,10 +101,10 @@ export default function NgoMatchModal({
                 />
                 <div className="match-card-top">
                   <div>
-                    {index === 0 && <span className="match-best">BEST MATCH</span>}
+                    {index === 0 && <span className="match-best">Best match</span>}
                     <h3>{match.ngo.name}</h3>
                     <span className="match-sub">
-                      {match.ngo.type} · {match.ngo.area} · ETA {formatClock(match.arrival)}
+                      {match.ngo.type}, {match.ngo.area}. Arrives around {formatClock(match.arrival)}
                     </span>
                   </div>
                   <div className="match-score" aria-label={`Match score ${match.score} out of 100`}>
@@ -120,7 +117,7 @@ export default function NgoMatchModal({
                   {FACTORS.map((factor) => (
                     <div className="match-factor" key={factor.key}>
                       <span>
-                        {factor.label} · {Math.round(MATCH_WEIGHTS[factor.key] * 100)}%
+                        {factor.label} <em>{Math.round(MATCH_WEIGHTS[factor.key] * 100)}%</em>
                       </span>
                       <div className="match-bar">
                         <i style={{ width: `${Math.round(match.breakdown[factor.key] * 100)}%` }} />
@@ -131,11 +128,11 @@ export default function NgoMatchModal({
 
                 <ul className="match-reasons">
                   {match.reasons.map((reason) => (
-                    <li key={reason}>✓ {reason}</li>
+                    <li key={reason}>{reason}</li>
                   ))}
                   {match.warnings.map((warning) => (
                     <li key={warning} className="match-warning">
-                      ! {warning}
+                      {warning}
                     </li>
                   ))}
                 </ul>
@@ -154,7 +151,7 @@ export default function NgoMatchModal({
                 <strong>{item.ngo.name}</strong>
                 <ul>
                   {item.failures.map((failure) => (
-                    <li key={failure}>× {failure}</li>
+                    <li key={failure}>{failure}</li>
                   ))}
                 </ul>
               </div>
@@ -178,7 +175,7 @@ export default function NgoMatchModal({
             disabled={selectedId === null}
             onClick={() => selectedId !== null && onReserve(donation.id, selectedId)}
           >
-            Reserve for selected organisation ↗
+            Reserve for this partner
           </button>
         </div>
       </section>

@@ -87,14 +87,8 @@ export default function RescueIntelligenceTools({ donations }: Props) {
   return (
     <>
       <article className="intelligence-card">
-        <div className="intel-icon intel-peach">⤴</div>
-        <div className="intel-tag">02 / BACKUP PLAN</div>
-        <h3>Rescue Cascade</h3>
-        <p>
-          Explore a backup plan when one recipient cannot accept the
-          entire donation. Adjust capacities to see how food could be
-          split between two receiving partners.
-        </p>
+        <h3>Rescue cascade</h3>
+        <p>If one partner can't take it all, how does it split across two?</p>
 
         <div className="ri-tool">
           <label className="ri-field">
@@ -106,7 +100,7 @@ export default function RescueIntelligenceTools({ donations }: Props) {
               <option value="">Choose a donation</option>
               {donations.map((item) => (
                 <option key={item.id} value={item.id}>
-                  {item.name} · {item.serves} servings
+                  {item.name} ({item.serves} servings)
                 </option>
               ))}
             </select>
@@ -115,11 +109,11 @@ export default function RescueIntelligenceTools({ donations }: Props) {
           {selectedDonation ? (
             <>
               <div className="ri-context">
-                <span>DONOR</span>
+                <span>Donor</span>
                 <strong>{selectedDonation.donor}</strong>
-                <span>LOCATION</span>
+                <span>Location</span>
                 <strong>{selectedDonation.location}</strong>
-                <span>DONATION SIZE</span>
+                <span>Size</span>
                 <strong>{servings} servings</strong>
               </div>
 
@@ -155,9 +149,6 @@ export default function RescueIntelligenceTools({ donations }: Props) {
                 }`}
                 aria-live="polite"
               >
-                <span className="ri-result-label">
-                  CASCADE ASSESSMENT
-                </span>
                 <strong>
                   {unallocated === 0
                     ? 'The donation can be allocated'
@@ -198,13 +189,8 @@ export default function RescueIntelligenceTools({ donations }: Props) {
       </article>
 
       <article className="intelligence-card">
-        <div className="intel-icon intel-lilac">⌁</div>
-        <div className="intel-tag">03 / PREDICTION</div>
-        <h3>Surplus Forecast</h3>
-        <p>
-          Explore a possible near-term surplus scenario using current
-          listings and an adjustable growth assumption.
-        </p>
+        <h3>Surplus forecast</h3>
+        <p>Roughly how much surplus to plan collection capacity for.</p>
 
         <div className="ri-tool">
           <label className="ri-field">
@@ -237,7 +223,7 @@ export default function RescueIntelligenceTools({ donations }: Props) {
           </label>
 
           <div className="ri-forecast-total">
-            <span>SCENARIO ESTIMATE</span>
+            <span>Scenario estimate</span>
             <strong>
               {forecast.estimatedTotal.toLocaleString()}
             </strong>
@@ -293,9 +279,6 @@ export default function RescueIntelligenceTools({ donations }: Props) {
           ))}
 
           <div className="ri-result ri-neutral">
-            <span className="ri-result-label">
-              PLANNING SUGGESTION
-            </span>
             <strong>
               {forecast.estimatedTotal === 0
                 ? 'Gather more listing data'

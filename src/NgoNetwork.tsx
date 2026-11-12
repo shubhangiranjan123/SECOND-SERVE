@@ -108,38 +108,37 @@ export default function NgoNetwork({ ngos, donations, history, now, onUpdate, on
   }
 
   return (
-    <section className="ngo-network" id="ngo-network">
-      <div className="ngo-heading">
+    <section className="partners" id="partners" aria-labelledby="partners-title">
+      <div className="section-head">
         <div>
-          <span className="ngo-eyebrow">PARTNER NETWORK / 03</span>
-          <h2>Who can safely receive food.</h2>
+          <h2 id="partners-title">Who can safely receive food</h2>
           <p>
             Only verified organisations that are accepting, have suitable storage and have
             capacity left today are offered as matches.
           </p>
         </div>
-        <button type="button" className="button-outline" onClick={() => setShowForm((v) => !v)}>
-          {showForm ? 'Close form' : '+ Register organisation'}
+        <button type="button" className="button-outline" aria-expanded={showForm} onClick={() => setShowForm((v) => !v)}>
+          {showForm ? 'Close form' : 'Register organisation'}
         </button>
       </div>
 
-      <div className="ngo-stats">
-        <div className="ngo-stat">
-          <span>VERIFIED PARTNERS</span>
+      <div className="mini-stats">
+        <div>
           <strong>{verifiedCount}</strong>
+          <span>verified</span>
         </div>
-        <div className="ngo-stat">
-          <span>AWAITING REVIEW</span>
+        <div>
           <strong>{pendingCount}</strong>
+          <span>awaiting review</span>
         </div>
-        <div className="ngo-stat">
-          <span>REGISTERED</span>
+        <div>
           <strong>{ngos.length}</strong>
+          <span>registered</span>
         </div>
       </div>
 
       {showForm && (
-        <form className="ngo-form" onSubmit={handleSubmit}>
+        <form className="ngo-form form" onSubmit={handleSubmit}>
           <label>
             Organisation name
             <input
@@ -218,7 +217,7 @@ export default function NgoNetwork({ ngos, donations, history, now, onUpdate, on
           <div className="ngo-form-actions">
             <span>New organisations start as “Pending” and cannot receive food until verified.</span>
             <button type="submit" className="button-primary">
-              Register ↗
+              Register organisation
             </button>
           </div>
         </form>
@@ -241,11 +240,13 @@ export default function NgoNetwork({ ngos, donations, history, now, onUpdate, on
                 <div>
                   <h3>{ngo.name}</h3>
                   <span className="ngo-sub">
-                    {ngo.type} · {ngo.area} · {hoursLabel(ngo)}
+                    {ngo.type}, {ngo.area}
+                  </span>
+                  <span className="ngo-sub">
+                    {hoursLabel(ngo).startsWith('Open') ? hoursLabel(ngo) : `Open ${hoursLabel(ngo)}`}
                   </span>
                 </div>
                 <span className={`ngo-badge badge-${ngo.verification.toLowerCase()}`}>
-                  {ngo.verification === 'Verified' ? '✓ ' : ''}
                   {ngo.verification}
                 </span>
               </div>
@@ -272,7 +273,7 @@ export default function NgoNetwork({ ngos, donations, history, now, onUpdate, on
                   <i style={{ width: `${usedPct}%` }} />
                 </div>
                 <span className="ngo-capacity-detail">
-                  {usage.committed} reserved · {usage.deliveredToday} delivered today
+                  {usage.committed} reserved, {usage.deliveredToday} delivered today
                 </span>
               </div>
 

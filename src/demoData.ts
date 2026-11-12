@@ -1,4 +1,4 @@
-import type { Donation, Ngo, StorageType } from './types'
+import type { Donation, Ngo, RescueRecord, StorageType } from './types'
 
 export type Area = { name: string; lat: number; lng: number }
 
@@ -102,6 +102,7 @@ export function createInitialDonations(now: number): Donation[] {
       readyAt: now,
       safeUntil: now + 24 * 60 * MIN,
       ngoId: 101,
+      accepted: true,
     },
     {
       id: 4,
@@ -210,4 +211,45 @@ export function createInitialNgos(): Ngo[] {
       closesHour: 21,
     },
   ]
+}
+
+// A few earlier rescues so the garden and "Replay today" have something
+// to show in a fresh demo. Marked sample: the UI says so.
+export function createInitialHistory(now: number): RescueRecord[] {
+  const area = (name: string) => {
+    const a = findArea(name)
+    return { lat: a.lat, lng: a.lng }
+  }
+  const ngos = createInitialNgos()
+  const ngoPoint = (id: number) => {
+    const n = ngos.find((x) => x.id === id)!
+    return { name: n.name, point: { lat: n.lat, lng: n.lng } }
+  }
+  const rows: [string, string, string, number, number, number, number, string][] = [
+    ['Paneer wraps', 'Spice Route Dhaba', 'Sector 43', 105, 16, 16, 300, 'Meera Kapoor'],
+    ['Dal and rice', 'Hotel Mountview kitchen', 'Sector 8', 104, 40, 40, 255, 'Aarav Sharma'],
+    ['Assorted breads', 'Sunday Bakehouse', 'Sector 34', 103, 24, 12, 210, 'Meera Kapoor'],
+    ['Veg pulao', 'The Green Kitchen', 'Sector 35', 101, 30, 30, 160, 'Kabir Singh'],
+    ['Fruit crates', 'Harvest Market', 'Sector 22', 101, 10, 20, 95, 'Aarav Sharma'],
+  ]
+  return rows.map(([food, donor, pickupArea, ngoId, quantity, servings, minsAgo, runnerName], i) => {
+    const ngo = ngoPoint(ngoId)
+    return {
+      rescueId: `S-${i + 1}`,
+      donationId: -(i + 1),
+      food,
+      donor,
+      pickupArea,
+      ngoId,
+      ngoName: ngo.name,
+      runnerName,
+      quantity,
+      unit: food === 'Fruit crates' ? 'kg' : 'servings',
+      servings,
+      deliveredAt: now - minsAgo * MIN,
+      from: area(pickupArea),
+      to: ngo.point,
+      sample: true,
+    }
+  })
 }

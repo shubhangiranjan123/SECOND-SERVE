@@ -1,0 +1,331 @@
+.live-map {
+  position: relative;
+  height: 100%;
+  min-height: 420px;
+  background: #f3ece8;
+}
+
+.live-map-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  font-family: var(--font-ui);
+  background: #f3ece8;
+}
+
+/* Tint the street map toward the app's palette. */
+.live-map-canvas .leaflet-tile-pane {
+  filter: grayscale(0.6) sepia(0.15) hue-rotate(-14deg) saturate(1.15) brightness(1.05) contrast(0.9);
+}
+
+.live-map-canvas .leaflet-tooltip {
+  border: 2px solid var(--ink);
+  border-radius: 10px;
+  box-shadow: none;
+  padding: 5px 9px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.ring-pin-wrap,
+.house-pin-wrap,
+.runner-pin-wrap {
+  background: none;
+  border: 0;
+}
+
+.ring-pin {
+  position: relative;
+  cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.3);
+}
+
+.ring-pin:hover,
+.ring-pin.is-selected {
+  transform: scale(1.12);
+}
+
+.ring-pin svg {
+  position: absolute;
+  inset: 0;
+  /* Leaflet gives map SVGs z-index 200; keep the ring under its label. */
+  z-index: 0 !important;
+}
+
+.rp-track {
+  fill: #fff;
+  stroke: #fbe6ee;
+}
+
+.rp-fill {
+  fill: none;
+  stroke: var(--green);
+  stroke-linecap: round;
+}
+
+.ring-pin.is-urgent .rp-fill {
+  stroke: var(--pink);
+}
+
+.ring-pin.is-reserved .rp-fill {
+  stroke: var(--ink);
+}
+
+.ring-pin.is-selected svg {
+  filter: drop-shadow(0 0 0 var(--ink));
+}
+
+.ring-pin.is-selected .rp-track {
+  stroke: var(--pink-soft);
+}
+
+.ring-pin-core {
+  position: absolute;
+  z-index: 1;
+  inset: 11px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background-size: cover;
+  background-position: center;
+  overflow: hidden;
+}
+
+.ring-pin-core b {
+  position: relative;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+}
+
+.ring-pin-core b.is-word {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.ring-pin-core[style] b {
+  color: #fff;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 0.6);
+}
+
+.ring-pin-core[style]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgb(30 42 36 / 0.35);
+}
+
+.ring-pin.is-urgent .ring-pin-core b {
+  font-size: 15px;
+  color: var(--pink-deep);
+}
+
+.ring-pin-ripple {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  border: 3px solid var(--pink);
+  border-radius: 50%;
+  animation: pin-ripple 1.8s ease-out infinite;
+}
+
+@keyframes pin-ripple {
+  from {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  to {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+}
+
+.cat-meals {
+  background-color: var(--pink-soft);
+}
+
+.cat-bakery {
+  background-color: #ffeccc;
+}
+
+.cat-produce {
+  background-color: var(--mint-soft);
+}
+
+.house-pin {
+  display: block;
+  width: 30px;
+  height: 30px;
+  background: var(--ink);
+  clip-path: polygon(50% 0, 100% 42%, 100% 100%, 0 100%, 0 42%);
+  box-shadow: inset 0 0 0 3px var(--bg);
+}
+
+.house-pin.is-busy {
+  background: var(--green);
+}
+
+.runner-pin {
+  display: block;
+  width: 24px;
+  height: 24px;
+  border: 4px solid #fff;
+  border-radius: 50%;
+  background: var(--ink);
+  box-shadow: 0 0 0 3px var(--pink);
+  animation: runner-bob 1.2s ease-in-out infinite;
+}
+
+@keyframes runner-bob {
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+.route-live {
+  animation: route-dash 1s linear infinite;
+}
+
+.route-offer {
+  opacity: 0.6;
+}
+
+@keyframes route-dash {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+
+.route-replay {
+  stroke-dasharray: 600;
+  stroke-dashoffset: 600;
+  animation: route-draw 0.9s ease-out forwards;
+}
+
+@keyframes route-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.live-map-bottom {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  z-index: 500;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.live-map-bottom > * {
+  pointer-events: auto;
+}
+
+.live-map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0;
+  padding: 9px 16px;
+  list-style: none;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.live-map-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lg-ring {
+  width: 14px;
+  height: 14px;
+  border: 3.5px solid var(--green);
+  border-radius: 50%;
+}
+
+.lg-urgent {
+  border-color: var(--pink);
+}
+
+.lg-house {
+  width: 14px;
+  height: 13px;
+  background: var(--ink);
+  clip-path: polygon(50% 0, 100% 42%, 100% 100%, 0 100%, 0 42%);
+}
+
+.lg-line {
+  width: 22px;
+  height: 3px;
+  background: repeating-linear-gradient(90deg, var(--pink) 0 4px, transparent 4px 8px);
+}
+
+.replay-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 0 18px;
+  border: 2.5px solid var(--ink);
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--on-ink);
+  font-weight: 700;
+  font-size: 15px;
+  box-shadow: 0 4px 0 var(--pink);
+}
+
+.replay-button:disabled {
+  opacity: 0.5;
+}
+
+.replay-card {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 20px;
+  border: 2.5px solid var(--ink);
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 5px 0 var(--ink);
+  transform: translateX(-50%);
+  font-size: 15px;
+  white-space: nowrap;
+  animation: notice-in 0.3s ease-out;
+}
+
+.replay-count {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 46px;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  color: var(--pink);
+}
+
+.replay-card b {
+  color: var(--green-deep);
+}
+
+.live-map.is-replaying .live-map-canvas .leaflet-tile-pane {
+  filter: grayscale(0.9) brightness(0.9) contrast(0.85);
+}

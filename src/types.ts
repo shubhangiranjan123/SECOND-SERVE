@@ -28,7 +28,15 @@ export type Donation = {
   readyAt: number // when the food can be collected
   safeUntil: number // donor-declared safe-use deadline
   deadlineAssumed?: boolean // true if filled in automatically for an old saved listing
-  ngoId: number | null // organisation it was reserved for
+  ngoId: number | null // organisation it was offered to / reserved for
+  // Reserved + accepted=false means "offered, waiting for the partner".
+  // Reserved + accepted=true means the partner said yes and a runner can go.
+  accepted?: boolean
+  offeredAt?: number // when the current offer went to the partner
+  acceptedAt?: number // when the partner said yes
+  declinedBy?: number[] // partners who said no, skipped when matching again
+  photo?: string // small JPEG data URL taken by the donor
+  thanks?: string // one-tap note from the partner after delivery
 }
 
 export type VerificationStatus = 'Verified' | 'Pending' | 'Rejected'
@@ -66,4 +74,16 @@ export type RescueRecord = {
   unit: string
   servings: number
   deliveredAt: number
+  // Map points, so "Replay today" can redraw the route later.
+  from?: { lat: number; lng: number }
+  to?: { lat: number; lng: number }
+  sample?: boolean // seeded demo history, labelled as such in the UI
+}
+
+// One line in the live activity feed.
+export type ActivityEvent = {
+  id: string
+  at: number
+  text: string
+  tone: 'info' | 'good' | 'warn'
 }
