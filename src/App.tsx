@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { Pencil, Plus, Search, Trash2, X } from 'lucide-react'
 import './App.css'
 import './NgoMatching.css'
+import WasteCounter from './WasteCounter'
+import Dial from './Dial'
+import Garden from './Garden'
 import RescueMap from './RescueMap'
-import RunnerDispatch, { type DeliveryCompletion } from './RunnerDispatch'
+import RunnerDispatch, { DISPATCH_STORAGE_KEY, type DeliveryCompletion } from './RunnerDispatch'
 import RescueIntelligenceTools from './RescueIntelligenceTools'
 import NgoMatchModal from './NgoMatchModal'
 import NgoNetwork from './NgoNetwork'
@@ -22,8 +26,6 @@ import {
 } from './demoData'
 import {
   evaluateNgo,
-  formatClock,
-  formatDuration,
   isExpired,
   minutesBetween,
 } from './rescueEngine'
@@ -207,14 +209,6 @@ function useNow(intervalMs = 30_000) {
   return now
 }
 
-function urgencyOf(donation: Donation, now: number) {
-  const left = minutesBetween(now, donation.safeUntil)
-  if (left <= 0) return 'expired'
-  if (left <= 60) return 'critical'
-  if (left <= 180) return 'high'
-  return 'normal'
-}
-
 function App() {
   const [donations, setDonations] = useState<Donation[]>(loadDonations)
   const [ngos, setNgos] = useState<Ngo[]>(loadNgos)
@@ -224,24 +218,34 @@ function App() {
   const [activeFilter, setActiveFilter] = useState('All food')
   const [search, setSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
-const [travelMinutes, setTravelMinutes] = useState('15')
-const [preparationMinutes, setPreparationMinutes] = useState('5')
-const [expiryMinutes, setExpiryMinutes] = useState('60')
 
-const rescueTotalMinutes =
-  Number(travelMinutes) + Number(preparationMinutes)
-
-const rescueBufferMinutes =
-  Number(expiryMinutes) - rescueTotalMinutes
-
-const isRescueFeasible = rescueBufferMinutes >= 0
+  // Rescue Twin: a quick "will it make it in time?" check.
+  const [travelMinutes, setTravelMinutes] = useState('15')
+  const [preparationMinutes, setPreparationMinutes] = useState('5')
+  const [expiryMinutes, setExpiryMinutes] = useState('60')
+  const rescueTotalMinutes = Number(travelMinutes) + Number(preparationMinutes)
+  const rescueBufferMinutes = Number(expiryMinutes) - rescueTotalMinutes
+  const isRescueFeasible = rescueBufferMinutes >= 0
 
   const [editingDonation, setEditingDonation] =
     useState<Donation | null>(null)
   const [donationToRemove, setDonationToRemove] =
     useState<Donation | null>(null)
   const [notice, setNotice] = useState('')
+  const [noticeLink, setNoticeLink] = useState<string | null>(null)
+  const [confirmReset, setConfirmReset] = useState(false)
+  // Bumped on "Reset demo" so Runner Dispatch remounts with fresh state.
+  const [dispatchKey, setDispatchKey] = useState(0)
   const [form, setForm] = useState<DonationForm>(() => makeEmptyForm(Date.now()))
+
+  function say(message: string, link: string | null = null) {
+    setNotice(message)
+    setNoticeLink(link)
+  }
+
+  function dismissNotice() {
+    say('')
+  }
 
   useEffect(() => saveToStorage(DONATIONS_KEY, donations), [donations])
   useEffect(() => saveToStorage(NGOS_KEY, ngos), [ngos])
@@ -260,9 +264,6 @@ const isRescueFeasible = rescueBufferMinutes >= 0
     )
     .reduce((total, item) => total + item.serves, 0)
 
-  // Actual impact: comes ONLY from the permanent rescue history.
-  const lifetimeRescues = rescueHistory.length
-  const lifetimeServings = rescueHistory.reduce((sum, r) => sum + r.servings, 0)
   const verifiedPartners = ngos.filter((n) => n.verification === 'Verified').length
 
   const matchingDonation =
@@ -293,10 +294,32 @@ const isRescueFeasible = rescueBufferMinutes >= 0
     })
   }, [donations, activeFilter, search])
 
+  // Most urgent first: live food by deadline, then reserved, delivered, expired.
+  const orderedDonations = useMemo(() => {
+    const rank = (d: Donation) =>
+      d.status === 'Available' && !isExpired(d, now)
+        ? 0
+        : d.status === 'Reserved'
+          ? 1
+          : d.status === 'Delivered'
+            ? 2
+            : 3
+    return [...filteredDonations].sort(
+      (a, b) => rank(a) - rank(b) || a.safeUntil - b.safeUntil,
+    )
+  }, [filteredDonations, now])
+
+  const featuredId =
+    orderedDonations[0] &&
+    orderedDonations[0].status === 'Available' &&
+    !isExpired(orderedDonations[0], now)
+      ? orderedDonations[0].id
+      : null
+
   function openNewDonationForm() {
     setEditingDonation(null)
     setForm(makeEmptyForm(Date.now()))
-    setNotice('')
+    say('')
     setShowForm(true)
   }
 
@@ -316,7 +339,7 @@ const isRescueFeasible = rescueBufferMinutes >= 0
       ),
       safeUntil: toLocalInput(donation.safeUntil),
     })
-    setNotice('')
+    say('')
     setShowForm(true)
   }
 
@@ -349,7 +372,7 @@ const isRescueFeasible = rescueBufferMinutes >= 0
     const pickup = form.pickup.trim() || 'Time to be confirmed'
 
     if (!name || !donor || !location) {
-      setNotice('Please complete all required fields.')
+      say('Add the food name, donor and pickup area.')
       return
     }
 
@@ -360,12 +383,12 @@ const isRescueFeasible = rescueBufferMinutes >= 0
       submittedAt + Math.max(0, Number(form.readyInMinutes) || 0) * MIN
 
     if (!Number.isFinite(safeUntil) || safeUntil <= submittedAt) {
-      setNotice('The safe-use deadline must be in the future.')
+      say('The safe-use deadline must be in the future.')
       return
     }
 
     if (readyAt >= safeUntil) {
-      setNotice('Food must be ready for pickup before its safe-use deadline.')
+      say('Food must be ready for pickup before its safe-use deadline.')
       return
     }
 
@@ -401,7 +424,7 @@ const isRescueFeasible = rescueBufferMinutes >= 0
         ),
       )
 
-      setNotice('Donation updated successfully.')
+      say('Changes saved.')
     } else {
       const newDonation: Donation = {
         id: Date.now(),
@@ -423,7 +446,7 @@ const isRescueFeasible = rescueBufferMinutes >= 0
       }
 
       setDonations((current) => [newDonation, ...current])
-      setNotice('Your food donation has been listed successfully.')
+      say('Donation published to the rescue board.')
     }
 
     setActiveFilter('All food')
@@ -437,7 +460,7 @@ const isRescueFeasible = rescueBufferMinutes >= 0
     if (donation?.status === 'Reserved') {
       // A reserved donation has a rescue job (and maybe a busy runner).
       // Removing it would leave the dispatch side inconsistent.
-      setNotice(
+      say(
         `"${donation.name}" is reserved for a rescue and cannot be removed until it is delivered.`,
       )
       return
@@ -455,7 +478,7 @@ const isRescueFeasible = rescueBufferMinutes >= 0
       current.filter((item) => item.id !== donationToRemove.id),
     )
 
-    setNotice('Donation removed from the rescue board.')
+    say('Donation removed from the rescue board.')
     setDonationToRemove(null)
   }
 
@@ -479,7 +502,7 @@ const isRescueFeasible = rescueBufferMinutes >= 0
     const check = evaluateNgo(item, ngo, donations, rescueHistory, Date.now())
 
     if (!check.eligible) {
-      setNotice(`${ngo.name} is no longer eligible: ${check.failures[0]}`)
+      say(`${ngo.name} is no longer eligible: ${check.failures[0]}`)
       return
     }
 
@@ -492,7 +515,7 @@ const isRescueFeasible = rescueBufferMinutes >= 0
     )
 
     setMatchingDonationId(null)
-    setNotice(`"${item.name}" reserved for ${ngo.name} (match score ${check.score}/100).`)
+    say(`"${item.name}" is going to ${ngo.name} (match score ${check.score}/100). Send a runner from Dispatch.`, '#dispatch')
   }
 
   // Called by Runner Dispatch when a job reaches "Delivered".
@@ -536,6 +559,24 @@ const isRescueFeasible = rescueBufferMinutes >= 0
           : d,
       ),
     )
+    say(`${donation.name} delivered by ${completion.runnerName}. A new flower is in the garden.`, '#garden')
+  }
+
+  // Sample deadlines are relative to first load, so after a day every
+  // listing has expired. This puts the demo back to a fresh state.
+  function resetDemo() {
+    const fresh = Date.now()
+    try {
+      localStorage.removeItem(DISPATCH_STORAGE_KEY)
+    } catch {
+      /* storage unavailable: state reset below still works */
+    }
+    setDonations(createInitialDonations(fresh))
+    setNgos(createInitialNgos())
+    setRescueHistory([])
+    setDispatchKey((k) => k + 1)
+    setConfirmReset(false)
+    say('Demo data reset. Every countdown starts fresh.')
   }
 
   function updateNgo(updated: Ngo) {
@@ -544,377 +585,222 @@ const isRescueFeasible = rescueBufferMinutes >= 0
 
   function addNgo(ngo: Ngo) {
     setNgos((current) => [...current, ngo])
-    setNotice(`${ngo.name} registered. Verify it before it can receive food.`)
+    say(`${ngo.name} registered. Verify it before it can receive food.`)
   }
 
+  const liveCount = availableCount
+  const urgentCount = donations.filter(
+    (d) =>
+      d.status === 'Available' &&
+      !isExpired(d, now) &&
+      minutesBetween(now, d.safeUntil) < 90,
+  ).length
+
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <a className="brand" href="#home" aria-label="Second Serve home">
-          <span className="brand-mark">
-            s<span>·</span>
-          </span>
-          <span className="brand-name">
-            second<span>serve</span>
-          </span>
+    <div className="app">
+      <header className="topnav">
+        <a className="brand" href="#top" aria-label="Second Serve, back to top">
+          <span className="brand-blob" aria-hidden="true" />
+          second serve
         </a>
-
-        <div className="workspace-label">WORKSPACE</div>
-
-        <nav className="side-nav" aria-label="Main navigation">
-          <a className="nav-link active" href="#home">
-            <span className="nav-icon">◫</span> Overview
-          </a>
-          <a className="nav-link" href="#donations">
-            <span className="nav-icon">♧</span> Food donations
-            <span className="nav-count">{availableCount}</span>
-          </a>
-          <a className="nav-link" href="#ngo-network">
-            <span className="nav-icon">⌂</span> NGO network
-          </a>
-          <a className="nav-link" href="#intelligence">
-            <span className="nav-icon">✳</span> Rescue intelligence
-          </a>
-          <a className="nav-link" href="#impact">
-            <span className="nav-icon">↗</span> Impact report
-          </a>
+        <nav aria-label="Sections">
+          <a href="#board">Board</a>
+          <a href="#map">Map</a>
+          <a href="#partners">Partners</a>
+          <a href="#dispatch">Dispatch</a>
+          <a href="#tools">Planning</a>
+          <a href="#garden">Impact</a>
         </nav>
+        <button type="button" className="topnav-cta" onClick={openNewDonationForm}>
+          <Plus size={17} strokeWidth={2.4} /> List food
+        </button>
+      </header>
 
-        <div className="sidebar-bottom">
-          <div className="sidebar-help">
-            <div className="help-spark">✳</div>
-            <h3>
-              Good food.
-              <br />
-              Better futures.
-            </h3>
-            <p>
-              Every rescued meal is a little less waste and a little more
-              hope.
-            </p>
-            <a href="#impact" className="help-link">
-              See our mission ↗
-            </a>
-          </div>
+      <main id="top">
+        <WasteCounter onList={openNewDonationForm} />
 
-          <div className="profile-row">
-            <div className="profile-avatar">SS</div>
-            <div className="profile-info">
-              <strong>Community hub</strong>
-              <span>Local coordinator</span>
-            </div>
-            <span className="profile-menu">···</span>
-          </div>
-        </div>
-      </aside>
-
-      <main className="main-content" id="home">
-        <header className="topbar">
-          <div className="breadcrumb">
-            <span>Workspace</span>
-            <span className="breadcrumb-slash">/</span>
-            <strong>Overview</strong>
-          </div>
-
-          <div className="topbar-right">
-            <span className="live-status">
-              <span /> Live overview
-            </span>
-            <div className="top-avatar">SS</div>
-          </div>
-        </header>
-
-        <div className="page-content">
-          {notice && (
+        <div className="page">
+          {notice && !showForm && (
             <div className="notice" role="status">
-              <span>✓</span> {notice}
-              <button
-                className="notice-close"
-                onClick={() => setNotice('')}
-                aria-label="Dismiss notification"
-              >
-                ×
+              <span>{notice}</span>
+              {noticeLink && (
+                <a className="notice-link" href={noticeLink} onClick={dismissNotice}>
+                  {noticeLink === '#garden' ? 'See the garden' : 'Go to dispatch'}
+                </a>
+              )}
+              <button className="notice-close" onClick={dismissNotice} aria-label="Dismiss">
+                <X size={18} />
               </button>
             </div>
           )}
 
-          <section className="welcome-row">
-            <div>
-              <div className="eyebrow">
-                <span className="eyebrow-dot" /> FOOD RESCUE NETWORK
-              </div>
-
-              <h1>
-                Good food deserves
-                <br />
-                another <span>chance.</span>
-              </h1>
-
-              <p className="welcome-copy">
-                Rescue surplus food, connect with your community, and turn
-                what might go to waste into something wonderful.
-              </p>
-
-              <div className="welcome-actions">
-                <button
-                  className="button-primary"
-                  onClick={openNewDonationForm}
-                >
-                  <span className="button-plus">+</span> List surplus food
-                </button>
-                <a className="text-link" href="#donations">
-                  Explore donations <span>↗</span>
-                </a>
-              </div>
-            </div>
-
-            <div
-              className="hero-art"
-              aria-label="Illustration of food being rescued"
-            >
-              <div className="hero-orbit orbit-one" />
-              <div className="hero-orbit orbit-two" />
-              <div className="hero-leaf leaf-one">✳</div>
-              <div className="hero-leaf leaf-two">✳</div>
-              <div className="hero-food">🥗</div>
-              <div className="hero-sticker sticker-top">
-                <span>✳</span> LESS WASTE
-              </div>
-              <div className="hero-sticker sticker-bottom">
-                <span>♥</span> MORE GOOD
-              </div>
-              <div className="hero-mini-card">
-                <span className="mini-check">✓</span>
-                <div>
-                  <strong>Food rescued!</strong>
-                  <small>A little goes a long way.</small>
-                </div>
-              </div>
-            </div>
+          <section className="turn" aria-labelledby="turn-title">
+            <h2 id="turn-title">
+              Some of it is perfectly good food, ten minutes away from someone who needs it.
+            </h2>
+            <p className="turn-copy">
+              A café lists what it can't sell. Second Serve finds a verified partner that can
+              store it and still has room today, then sends a runner before it spoils.
+            </p>
+            <p className="turn-live">
+              <span className="live-dot" aria-hidden="true" />
+              Right now: <b className="num">{liveCount}</b> {liveCount === 1 ? 'listing' : 'listings'} waiting
+              {urgentCount > 0 && (
+                <>
+                  , <b className="num pink">{urgentCount}</b> under 90 minutes
+                </>
+              )}
+              , <b className="num">{totalServings}</b> servings on the board,{' '}
+              <b className="num">{verifiedPartners}</b> of {ngos.length} partners verified.
+            </p>
           </section>
 
-          <section
-            className="stats-grid"
-            id="impact"
-            aria-label="Food rescue statistics"
-          >
-            <article className="stat-card">
-              <div className="stat-top">
-                <span>Available donations</span>
-                <span className="stat-icon mint">♧</span>
-              </div>
-              <div className="stat-value">
-                {availableCount.toString().padStart(2, '0')}
-                <span className="stat-unit"> listings</span>
-              </div>
-              <div className="stat-foot">
-                <span className="tiny-dot green-dot" /> Ready to be rescued
-              </div>
-            </article>
-
-            <article className="stat-card">
-              <div className="stat-top">
-                <span>Potential servings</span>
-                <span className="stat-icon peach-bg">♡</span>
-              </div>
-              <div className="stat-value">
-                {totalServings.toLocaleString()}
-                <span className="stat-unit"> servings</span>
-              </div>
-              <div className="stat-foot">Listed or reserved · not yet delivered</div>
-            </article>
-
-            <article className="stat-card">
-              <div className="stat-top">
-                <span>Verified partners</span>
-                <span className="stat-icon lilac-bg">♧</span>
-              </div>
-              <div className="stat-value">
-                {verifiedPartners}
-                <span className="stat-unit"> of {ngos.length} organisations</span>
-              </div>
-              <div className="stat-foot">Eligible to receive food</div>
-            </article>
-
-            <article className="stat-card stat-highlight">
-              <div className="stat-top">
-                <span>Lifetime rescues</span>
-                <span className="stat-icon cream-bg">✳</span>
-              </div>
-              <div className="stat-value">
-                {lifetimeRescues}
-                <span className="stat-unit">
-                  {' '}
-                  {lifetimeRescues === 1 ? 'rescue' : 'rescues'} completed
-                </span>
-              </div>
-              <div className="stat-foot">
-                {lifetimeServings.toLocaleString()} servings delivered · actual impact
-              </div>
-            </article>
-          </section>
-
-          <section className="donations-section" id="donations">
-            <div className="section-heading">
+          <section className="board" id="donations" aria-labelledby="board-title">
+            <span id="board" className="anchor" />
+            <div className="section-head">
               <div>
-                <div className="eyebrow">THE RESCUE BOARD</div>
-                <h2>
-                  Food looking for a home
-                  <span className="heading-period">.</span>
-                </h2>
-                <p className="section-subtitle">
-                  Fresh opportunities to make a difference in your
-                  neighbourhood.
+                <h2 id="board-title">Before it spoils</h2>
+                <p>
+                  A full ring is 12 hours of safe time. Rings drain live and turn pink under 90
+                  minutes. Most urgent first.
                 </p>
               </div>
-
-              <button
-                className="button-outline"
-                onClick={openNewDonationForm}
-              >
-                + Add a donation
-              </button>
-            </div>
-
-            <div className="donation-controls">
-              <div
-                className="filter-tabs"
-                role="group"
-                aria-label="Filter donations"
-              >
-                {filters.map((filter) => (
-                  <button
-                    key={filter}
-                    className={`filter-tab ${
-                      activeFilter === filter ? 'selected' : ''
-                    }`}
-                    onClick={() => setActiveFilter(filter)}
-                  >
-                    {filter}
-                  </button>
-                ))}
+              <div className="board-tools">
+                <div className="filter-tabs" role="group" aria-label="Filter by category">
+                  {filters.map((filter) => (
+                    <button
+                      key={filter}
+                      type="button"
+                      className={activeFilter === filter ? 'is-on' : ''}
+                      aria-pressed={activeFilter === filter}
+                      onClick={() => setActiveFilter(filter)}
+                    >
+                      {filter}
+                    </button>
+                  ))}
+                </div>
+                <label className="search">
+                  <Search size={17} aria-hidden="true" />
+                  <input
+                    type="search"
+                    placeholder="Food, donor or area"
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    aria-label="Search listings"
+                  />
+                </label>
               </div>
-
-              <label className="search-box">
-                <span>⌕</span>
-                <input
-                  type="search"
-                  placeholder="Search food or donor..."
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  aria-label="Search donations"
-                />
-              </label>
             </div>
 
-            <div className="donation-grid">
-              {filteredDonations.map((donation) => {
-                const expired =
-                  donation.status === 'Available' && isExpired(donation, now)
-                const shownStatus = expired ? 'Expired' : donation.status
-                const urgency = urgencyOf(donation, now)
-                const safeLeft = minutesBetween(now, donation.safeUntil)
-                const destination =
-                  ngos.find((n) => n.id === donation.ngoId)?.name ?? null
+            <div className="dial-grid">
+              {orderedDonations.map((donation) => {
+                const expired = donation.status === 'Available' && isExpired(donation, now)
+                const state = expired
+                  ? 'expired'
+                  : donation.status === 'Available'
+                    ? 'live'
+                    : donation.status === 'Reserved'
+                      ? 'reserved'
+                      : 'delivered'
+                const featured = donation.id === featuredId
+                const destination = ngos.find((n) => n.id === donation.ngoId)?.name ?? null
+                const urgent = state === 'live' && minutesBetween(now, donation.safeUntil) < 90
 
                 return (
-                <article className="donation-card" key={donation.id}>
-                  <div className="donation-card-actions">
-                    <button
-                      className="edit-donation"
-                      onClick={() => openEditDonationForm(donation)}
-                      aria-label={`Edit ${donation.name}`}
-                      title="Edit donation"
-                    >
-                      Edit
-                    </button>
+                  <article
+                    key={donation.id}
+                    className={`food is-${state} ${featured ? 'is-featured' : ''} ${urgent ? 'is-urgent' : ''}`}
+                  >
+                    <Dial
+                      readyAt={donation.readyAt}
+                      safeUntil={donation.safeUntil}
+                      state={state}
+                      size={featured ? 184 : 124}
+                    />
 
-                    <button
-                      className="remove-donation"
-                      onClick={() => removeDonation(donation.id)}
-                      aria-label={`Remove ${donation.name}`}
-                      title="Remove donation"
-                    >
-                      ×
-                    </button>
-                  </div>
-
-                  <div className={`food-visual ${donation.color}`}>
-                    <span className="food-emoji">{donation.emoji}</span>
-                    <span
-                      className={`status-pill status-${shownStatus.toLowerCase()}`}
-                    >
-                      <span /> {shownStatus}
-                    </span>
-                    <span className="food-category">
-                      {donation.category}
-                    </span>
-                  </div>
-
-                  <div className="donation-body">
-                    <div className="donor-label">
-                      <span className="donor-symbol">✳</span>{' '}
-                      {donation.donor}
-                    </div>
-
-                    <h3>{donation.name}</h3>
-
-                    <div className="donation-quantity">
-                      <strong>
-                        {donation.quantity} {donation.unit}
-                      </strong>
-                      <span>≈ {donation.serves} servings</span>
-                    </div>
-
-                    <div className="donation-meta">
-                      <span>⌖ {donation.location}</span>
-                      <span>◷ {donation.pickup}</span>
-                      <span>❄ {donation.storage}</span>
-                      {donation.status !== 'Delivered' && (
-                        <span className={`safe-time urgency-${urgency}`}>
-                          ⏱{' '}
-                          {safeLeft > 0
-                            ? `Safe for ${formatDuration(safeLeft)} · until ${formatClock(donation.safeUntil)}`
-                            : 'Safe-use window passed'}
-                          {donation.deadlineAssumed ? ' (assumed)' : ''}
+                    <div className="food-body">
+                      <p className="food-tags">
+                        <span className={`tag tag-${state}`}>
+                          {state === 'live'
+                            ? urgent
+                              ? 'Hurry'
+                              : 'Waiting'
+                            : state === 'reserved'
+                              ? 'Reserved'
+                              : state === 'delivered'
+                                ? 'Delivered'
+                                : 'Expired'}
                         </span>
+                        <span className="tag tag-plain">{donation.category}</span>
+                        <span className="tag tag-plain">{donation.storage}</span>
+                      </p>
+                      <h3>{donation.name}</h3>
+                      <p className="food-meta">
+                        {donation.donor}, {donation.location}
+                      </p>
+                      <p className="food-meta">
+                        <b>
+                          {donation.quantity} {donation.unit}
+                        </b>
+                        , about {donation.serves} servings. {donation.pickup}
+                        {donation.deadlineAssumed ? '. Deadline assumed' : ''}
+                      </p>
+                      {destination && (
+                        <p className="food-dest">
+                          {donation.status === 'Delivered' ? 'Went to' : 'Going to'} {destination}
+                        </p>
                       )}
-                      {destination && <span>→ {destination}</span>}
-                    </div>
 
-                    <button
-                      className={`donation-action ${
-                        donation.status !== 'Available' || expired
-                          ? 'action-reserved'
-                          : ''
-                      }`}
-                      onClick={() => reserveDonation(donation.id)}
-                      disabled={donation.status !== 'Available' || expired}
-                    >
-                      {expired
-                        ? 'Not safe to rescue'
-                        : donation.status === 'Available'
-                          ? 'Reserve donation ↗'
-                          : donation.status === 'Delivered'
-                            ? 'Delivered ✓'
-                            : 'Reserved ✓'}
-                    </button>
-                  </div>
-                </article>
+                      <div className="food-actions">
+                        {state === 'live' ? (
+                          <button
+                            type="button"
+                            className="button-primary"
+                            onClick={() => reserveDonation(donation.id)}
+                          >
+                            Find it a home
+                          </button>
+                        ) : (
+                          <span className="food-status">
+                            {state === 'reserved'
+                              ? 'Waiting for a runner'
+                              : state === 'delivered'
+                                ? 'Eaten, not binned'
+                                : 'Not safe to rescue'}
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          className="icon-button"
+                          onClick={() => openEditDonationForm(donation)}
+                          aria-label={`Edit ${donation.name}`}
+                          title="Edit"
+                        >
+                          <Pencil size={17} />
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-button icon-danger"
+                          onClick={() => removeDonation(donation.id)}
+                          aria-label={`Remove ${donation.name}`}
+                          title="Remove"
+                        >
+                          <Trash2 size={17} />
+                        </button>
+                      </div>
+                    </div>
+                  </article>
                 )
               })}
             </div>
 
-            {filteredDonations.length === 0 && (
-              <div className="empty-state">
-                <span>🥬</span>
-                <h3>No matching donations yet</h3>
-                <p>
-                  Try another search or category, or add a new donation to
-                  the board.
-                </p>
+            {orderedDonations.length === 0 && (
+              <div className="empty">
+                <p className="empty-title">Nothing matches that</p>
+                <p>Try another category, or clear the search to see every listing.</p>
                 <button
-                  className="button-primary"
+                  type="button"
+                  className="button-outline"
                   onClick={() => {
                     setSearch('')
                     setActiveFilter('All food')
@@ -924,19 +810,10 @@ const isRescueFeasible = rescueBufferMinutes >= 0
                 </button>
               </div>
             )}
-
-            <div className="board-footer">
-              <span>
-                Showing {filteredDonations.length} of {donations.length}{' '}
-                donations
-              </span>
-              <span>
-                <span className="tiny-dot green-dot" /> Updated for this
-                demo
-              </span>
-            </div>
           </section>
-          <RescueMap />
+
+          <RescueMap donations={donations} ngos={ngos} now={now} />
+
           <NgoNetwork
             ngos={ngos}
             donations={donations}
@@ -945,116 +822,72 @@ const isRescueFeasible = rescueBufferMinutes >= 0
             onUpdate={updateNgo}
             onAdd={addNgo}
           />
+
           <RunnerDispatch
+            key={dispatchKey}
             donations={dispatchDonations}
-            lifetimeRescues={lifetimeRescues}
+            now={now}
             onDeliveryComplete={recordDelivery}
           />
 
-
-          <section className="intelligence-section" id="intelligence">
-            <div className="intelligence-intro">
-              <div className="eyebrow">
-                <span className="eyebrow-dot" /> SMARTER FOOD RESCUE
+          <section className="tools" id="tools" aria-labelledby="tools-title">
+            <div className="section-head">
+              <div>
+                <h2 id="tools-title">Planning tools</h2>
+                <p>
+                  Quick simulators for the questions coordinators ask most. Simple rules, not
+                  trained models.
+                </p>
               </div>
-              <h2>
-                Rescue with a little
-                <br />
-                <span>more intelligence.</span>
-              </h2>
-              <p>
-                Our planned Rescue Intelligence Engine is designed to help
-                good food find the right place before time runs out.
-              </p>
-              <span className="prototype-label">
-                PROJECT CONCEPT · IN DEVELOPMENT
-              </span>
             </div>
 
-            <div className="intelligence-cards">
-              <article className="intelligence-card">
-                <div className="intel-icon intel-mint">◷</div>
-                <div className="intel-tag">01 / FEASIBILITY</div>
-                <h3>Rescue Twin</h3>
-                <p>
-                  Explore whether food can reach a recipient in time using
-                  pickup deadlines, travel estimates, and capacity.
-                </p>
-                
-<div className="rescue-simulator">
-  <label>
-    Travel time (minutes)
-    <input
-      type="number"
-      min="0"
-      value={travelMinutes}
-      onChange={(e) => setTravelMinutes(e.target.value)}
-    />
-  </label>
-
-  <label>
-    Preparation time (minutes)
-    <input
-      type="number"
-      min="0"
-      value={preparationMinutes}
-      onChange={(e) => setPreparationMinutes(e.target.value)}
-    />
-  </label>
-
-  <label>
-    Time until expiry (minutes)
-    <input
-      type="number"
-      min="0"
-      value={expiryMinutes}
-      onChange={(e) => setExpiryMinutes(e.target.value)}
-    />
-  </label>
-
-  <div className="rescue-result">
-    <strong>
-      {isRescueFeasible ? 'Rescue looks feasible' : 'Rescue may be too late'}
-    </strong>
-    <p>
-      {isRescueFeasible
-        ? `${rescueBufferMinutes} minutes of buffer remaining`
-        : `${Math.abs(rescueBufferMinutes)} minutes past expiry`}
-    </p>
-  </div>
-</div>
-
-
-
-<button
-  type="button"
-  className="rescue-explore-btn"
-  onClick={() => {
-    document.getElementById('donations')?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start',
-    })
-  }}
->
-  Explore donations <span aria-hidden="true">↗</span>
-</button>
-
-
+            <div className="tool-grid">
+              <article className="tool">
+                <h3>Will it make it?</h3>
+                <p className="tool-sub">Travel plus prep time against the safe-use window.</p>
+                <div className="tool-fields">
+                  <label className="field">
+                    Travel (min)
+                    <input type="number" min="0" value={travelMinutes} onChange={(e) => setTravelMinutes(e.target.value)} />
+                  </label>
+                  <label className="field">
+                    Prep (min)
+                    <input type="number" min="0" value={preparationMinutes} onChange={(e) => setPreparationMinutes(e.target.value)} />
+                  </label>
+                  <label className="field">
+                    Safe for (min)
+                    <input type="number" min="0" value={expiryMinutes} onChange={(e) => setExpiryMinutes(e.target.value)} />
+                  </label>
+                </div>
+                <div className={`verdict ${isRescueFeasible ? 'is-good' : 'is-bad'}`} aria-live="polite">
+                  <strong>{isRescueFeasible ? 'Makes it' : 'Too late'}</strong>
+                  <span>
+                    {isRescueFeasible
+                      ? `${rescueBufferMinutes} minutes to spare`
+                      : `${Math.abs(rescueBufferMinutes)} minutes past the window`}
+                  </span>
+                </div>
               </article>
 
-                           <RescueIntelligenceTools donations={donations} />
-               
+              <RescueIntelligenceTools
+                donations={donations.filter(
+                  (d) => d.status !== 'Delivered' && !isExpired(d, now),
+                )}
+              />
             </div>
           </section>
 
-          <footer className="page-footer">
-            <a className="footer-brand" href="#home">
-              second<span>serve</span> <span className="footer-heart">♥</span>
-            </a>
-            <span>Rescue food. Rethink waste. Rebuild possibility.</span>
-            <a href="#home" className="back-top">
-              Back to top ↑
-            </a>
+          <Garden history={rescueHistory} />
+
+          <footer className="footer">
+            <span className="footer-brand">second serve</span>
+            <p>
+              Food loss and waste is 8 to 10% of global greenhouse gas emissions (UNEP).
+              Rescuing it is climate action.
+            </p>
+            <button type="button" className="footer-reset" onClick={() => setConfirmReset(true)}>
+              Reset demo data
+            </button>
           </footer>
         </div>
       </main>
@@ -1063,124 +896,76 @@ const isRescueFeasible = rescueBufferMinutes >= 0
         <div
           className="modal-backdrop"
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              closeDonationForm()
-            }
+            if (event.target === event.currentTarget) closeDonationForm()
           }}
         >
-          <section
-            className="donation-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="modal-title"
-          >
-            <div className="modal-header">
+          <section className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+            <div className="modal-head">
               <div>
-                <div className="eyebrow">
-                  GIVE GOOD FOOD A SECOND CHANCE
-                </div>
-                <h2 id="modal-title">
-                  {editingDonation ? 'Edit donation' : 'List a donation'}
-                  <span className="heading-period">.</span>
-                </h2>
-                <p>
-                  Share the details so a local partner can rescue your
-                  surplus.
-                </p>
+                <h2 id="modal-title">{editingDonation ? 'Edit listing' : 'List surplus food'}</h2>
+                <p>Share the details so a nearby partner can take it in time.</p>
               </div>
-
-              <button
-                className="modal-close"
-                onClick={closeDonationForm}
-                aria-label="Close form"
-                type="button"
-              >
-                ×
+              <button className="modal-close" onClick={closeDonationForm} aria-label="Close" type="button">
+                <X size={20} />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="donation-form">
-              <label>
-                Food name
+            <form onSubmit={handleSubmit} className="form">
+              <label className="field">
+                Food
                 <input
                   required
                   maxLength={80}
-                  placeholder="e.g. Fresh vegetable bowls"
+                  placeholder="Vegetable biryani"
                   value={form.name}
-                  onChange={(event) =>
-                    setForm({ ...form, name: event.target.value })
-                  }
+                  onChange={(event) => setForm({ ...form, name: event.target.value })}
                 />
               </label>
-
-              <label>
-                Donor / business name
+              <label className="field">
+                Donor or business
                 <input
                   required
                   maxLength={80}
-                  placeholder="e.g. The Green Kitchen"
+                  placeholder="The Green Kitchen"
                   value={form.donor}
-                  onChange={(event) =>
-                    setForm({ ...form, donor: event.target.value })
-                  }
+                  onChange={(event) => setForm({ ...form, donor: event.target.value })}
                 />
               </label>
-
               <div className="form-row">
-                <label>
-                  Food category
-                  <select
-                    value={form.category}
-                    onChange={(event) =>
-                      handleCategoryChange(event.target.value)
-                    }
-                  >
+                <label className="field">
+                  Category
+                  <select value={form.category} onChange={(event) => handleCategoryChange(event.target.value)}>
                     <option>Meals</option>
                     <option>Bakery</option>
                     <option>Produce</option>
                   </select>
                 </label>
-
-                <label>
-                  Quantity
+                <label className="field">
+                  Quantity ({form.unit})
                   <input
                     required
                     type="number"
                     min="1"
                     max="10000"
                     value={form.quantity}
-                    onChange={(event) =>
-                      setForm({ ...form, quantity: event.target.value })
-                    }
+                    onChange={(event) => setForm({ ...form, quantity: event.target.value })}
                   />
                 </label>
               </div>
-
               <div className="form-row">
-                <label>
+                <label className="field">
                   Pickup area
-                  <select
-                    value={form.location}
-                    onChange={(event) =>
-                      setForm({ ...form, location: event.target.value })
-                    }
-                  >
+                  <select value={form.location} onChange={(event) => setForm({ ...form, location: event.target.value })}>
                     {AREAS.map((area) => (
                       <option key={area.name}>{area.name}</option>
                     ))}
                   </select>
                 </label>
-
-                <label>
-                  Storage needed
+                <label className="field">
+                  Storage
                   <select
                     value={form.storage}
-                    onChange={(event) =>
-                      setForm({
-                        ...form,
-                        storage: event.target.value as StorageType,
-                      })
-                    }
+                    onChange={(event) => setForm({ ...form, storage: event.target.value as StorageType })}
                   >
                     <option value="Ambient">Room temperature</option>
                     <option value="Chilled">Chilled</option>
@@ -1188,65 +973,54 @@ const isRescueFeasible = rescueBufferMinutes >= 0
                   </select>
                 </label>
               </div>
-
               <div className="form-row">
-                <label>
-                  Ready for pickup in (minutes)
+                <label className="field">
+                  Ready in (minutes)
                   <input
                     type="number"
                     min="0"
                     max="1440"
                     value={form.readyInMinutes}
-                    onChange={(event) =>
-                      setForm({ ...form, readyInMinutes: event.target.value })
-                    }
+                    onChange={(event) => setForm({ ...form, readyInMinutes: event.target.value })}
                   />
                 </label>
-
-                <label>
+                <label className="field">
                   Safe to eat until
                   <input
                     required
                     type="datetime-local"
                     value={form.safeUntil}
-                    onChange={(event) =>
-                      setForm({ ...form, safeUntil: event.target.value })
-                    }
+                    onChange={(event) => setForm({ ...form, safeUntil: event.target.value })}
                   />
                 </label>
               </div>
-
-              <label>
+              <label className="field">
                 Pickup note
                 <input
                   maxLength={100}
-                  placeholder="e.g. Today before 7 PM"
+                  placeholder="Before 7 PM, back door"
                   value={form.pickup}
-                  onChange={(event) =>
-                    setForm({ ...form, pickup: event.target.value })
-                  }
+                  onChange={(event) => setForm({ ...form, pickup: event.target.value })}
                 />
               </label>
 
-              <div className="form-note">
-                <span>✳</span> Only list food that has been safely stored
-                and is suitable for donation. The safe-use time is the donor's
-                own judgement; SECOND-SERVE uses it for planning and does not
-                certify food safety.
-              </div>
+              <p className="form-note">
+                Only list food that has been stored safely. The safe-use time is your own judgement;
+                Second Serve uses it for planning and doesn't certify food safety.
+              </p>
+
+              {notice && (
+                <p className="form-error" role="alert">
+                  {notice}
+                </p>
+              )}
 
               <div className="modal-actions">
-                <button
-                  type="button"
-                  className="button-cancel"
-                  onClick={closeDonationForm}
-                >
+                <button type="button" className="button-ghost" onClick={closeDonationForm}>
                   Cancel
                 </button>
                 <button type="submit" className="button-primary">
-                  {editingDonation
-                    ? 'Save changes'
-                    : 'Publish donation ↗'}
+                  {editingDonation ? 'Save changes' : 'Publish listing'}
                 </button>
               </div>
             </form>
@@ -1268,46 +1042,47 @@ const isRescueFeasible = rescueBufferMinutes >= 0
 
       {donationToRemove && (
         <div
-          className="confirm-overlay"
+          className="modal-backdrop"
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              setDonationToRemove(null)
-            }
+            if (event.target === event.currentTarget) setDonationToRemove(null)
           }}
         >
-          <section
-            className="confirm-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="confirm-title"
-          >
-            <div className="confirm-icon">×</div>
-
-            <p className="confirm-eyebrow">RESCUE BOARD</p>
-
-            <h2 id="confirm-title">Remove this donation?</h2>
-
-            <p className="confirm-message">
-              Are you sure you want to remove{' '}
-              <strong>{donationToRemove.name}</strong>? This action cannot
-              be undone.
+          <section className="modal modal-small" role="dialog" aria-modal="true" aria-labelledby="remove-title">
+            <h2 id="remove-title">Remove this listing?</h2>
+            <p className="modal-text">
+              <b>{donationToRemove.name}</b> will come off the board. This can't be undone.
             </p>
-
-            <div className="confirm-actions">
-              <button
-                className="confirm-cancel"
-                onClick={() => setDonationToRemove(null)}
-                type="button"
-              >
-                Keep donation
+            <div className="modal-actions">
+              <button className="button-ghost" onClick={() => setDonationToRemove(null)} type="button">
+                Keep it
               </button>
+              <button className="button-danger" onClick={confirmRemoveDonation} type="button">
+                Remove listing
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
 
-              <button
-                className="confirm-delete"
-                onClick={confirmRemoveDonation}
-                type="button"
-              >
-                Remove donation
+      {confirmReset && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setConfirmReset(false)
+          }}
+        >
+          <section className="modal modal-small" role="dialog" aria-modal="true" aria-labelledby="reset-title">
+            <h2 id="reset-title">Reset the demo?</h2>
+            <p className="modal-text">
+              Listings, partners, dispatch and the garden go back to the sample data with fresh
+              countdowns. Use this before presenting.
+            </p>
+            <div className="modal-actions">
+              <button className="button-ghost" onClick={() => setConfirmReset(false)} type="button">
+                Cancel
+              </button>
+              <button className="button-danger" onClick={resetDemo} type="button">
+                Reset demo data
               </button>
             </div>
           </section>

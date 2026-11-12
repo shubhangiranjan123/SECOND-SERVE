@@ -1,0 +1,150 @@
+.garden {
+  margin-top: 120px;
+  border-radius: var(--r-xl);
+  background: var(--ink);
+  color: var(--on-ink);
+  overflow: hidden;
+}
+
+.garden-top {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 32px 48px;
+  padding: 48px 48px 0;
+}
+
+.garden h2 {
+  font-size: clamp(34px, 4vw, 52px);
+}
+
+.garden-sub {
+  max-width: 34em;
+  margin-top: 12px;
+  font-size: 17px;
+  color: var(--on-ink-soft);
+}
+
+.garden-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px 44px;
+}
+
+.garden-stats div {
+  display: grid;
+  gap: 6px;
+}
+
+.garden-stats span:not(.garden-num) {
+  font-size: 15px;
+  color: #d7e6dd;
+}
+
+.garden-num {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(48px, 5.4vw, 76px);
+  line-height: 0.9;
+  letter-spacing: -0.045em;
+  color: #fff;
+  font-variation-settings: 'opsz' 96;
+}
+
+.garden-bed {
+  position: relative;
+  height: 320px;
+  margin-top: 20px;
+}
+
+.garden-empty {
+  position: absolute;
+  inset: 0 48px 90px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  font-size: 17px;
+  color: var(--on-ink-soft);
+}
+
+.flower {
+  position: absolute;
+  bottom: 46px;
+  width: 90px;
+  margin-left: -45px;
+  transform-origin: 50% 100%;
+  animation: grow 0.9s cubic-bezier(0.3, 1.4, 0.5, 1) both;
+}
+
+.flower svg {
+  width: 100%;
+  height: 100%;
+}
+
+.flower-sway {
+  transform-origin: 50% 100%;
+  animation: sway 5s ease-in-out infinite;
+}
+
+.flower:nth-child(even) .flower-sway {
+  animation-duration: 6.5s;
+  animation-direction: reverse;
+}
+
+.flower-head {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: bloom 1.3s cubic-bezier(0.3, 1.6, 0.5, 1) both;
+}
+
+@keyframes grow {
+  from {
+    transform: scaleY(0);
+  }
+}
+
+@keyframes bloom {
+  0%,
+  60% {
+    transform: scale(0);
+  }
+}
+
+@keyframes sway {
+  0%,
+  100% {
+    transform: rotate(-2deg);
+  }
+  50% {
+    transform: rotate(2deg);
+  }
+}
+
+.garden-ground {
+  position: absolute;
+  left: -2%;
+  right: -2%;
+  bottom: 0;
+  height: 64px;
+  background: var(--green);
+  border-radius: 50% 50% 0 0 / 40px 40px 0 0;
+}
+
+.garden-note {
+  padding: 0 48px 20px;
+  background: var(--green);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #10301f;
+}
+
+@media (max-width: 640px) {
+  .garden-top {
+    padding: 32px 24px 0;
+  }
+
+  .garden-note {
+    padding: 0 24px 18px;
+  }
+}
